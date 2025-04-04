@@ -43,13 +43,27 @@ const getUserById = async (req, res) => {
 // CREATE new user & invalidate cache
 const createUser = async (req, res) => {
     try {
-        const { name, email } = req.body;
-        const [result] = await db.query('INSERT INTO users (name, email) VALUES (?, ?)', [name, email]);
+        const users = req.body.users;
+        if(!Array.isArray(users) || (users.length) === 0) {
+            return res.status(400).json({ error: 'Users must be an array' });
+        }
+
+        for (const user of users) {
+            const { name, email } = user;
+            if (!name || !email) {
+                return res.status(400).json({ error: 'Name and email are required' });
+            }
+        }
+
+        const values = users.map(user => [user.name, user.email]);
+
+        const [result] = await db.query('INSERT INTO users (name, email) VALUES ? ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email)', [values]);
 
         await redisClient.del('users'); // Invalidate cache
-        res.status(201).json({ id: result.insertId, name, email });
+        res.status(201).json({ success: true, message: 'Users created successfully', insertedCount: result.affectedRows, data: result });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error creating users:', err);
+        res.status(500).json({ success: false, error: err.message });
     }
 };
 
